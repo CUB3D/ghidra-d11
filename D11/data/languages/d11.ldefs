@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<language_definitions>
+
+   <language processor="Broadcomm D11"
+            endian="little"
+            size="32"
+            variant="default"
+            version="1.0"
+            slafile="d11.sla"
+            processorspec="d11.pspec"
+            id="D11:LE:16:default">
+    <description>Broadcomm D11</description>
+    <compiler name="default" spec="d11.cspec" id="default"/>
+  </language> 
+</language_definitions>

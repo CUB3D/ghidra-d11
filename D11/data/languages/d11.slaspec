@@ -1,0 +1,482 @@
+
+define endian=little;
+define alignment=4;
+
+define space ram     type=ram_space      size=2 wordsize=1 default;
+define space register type=register_space size=2;
+define space ctrl_register type=ram_space size=2;
+
+define token inst (64)
+    top = (51, 63)
+    
+    opcode = (39, 50)#
+    opcode_top = (47, 50)
+    
+    opcode_mid = (43, 46)
+    opcode_low = (39, 42)
+    opcode_lomid = (39,46)
+
+    
+    op0 = (26, 38)
+    op0_ty = (37, 38)
+    op0_imm_mask = (36, 36)
+    op0_0_10 = (26, 36)
+    op0_10_12 = (36, 38)
+    op0_7_12 = (33, 38)
+    op0_12 = (38, 38)
+    op0_reg = (26, 32)
+    op0_spr = (26, 35)
+    op0_0_6 = (26, 32)
+    op0_refreg = (27, 29)
+    
+    
+    op1 = (13, 25)
+    op1_ty = (24, 25)
+    op1_imm_mask = (23, 23)
+    op1_0_10 = (13, 23)
+    op1_10_12 = (23, 25)
+    op1_7_12 = (20, 25)
+	op1_12 = (25, 25)    
+    op1_reg = (13, 19)
+    op1_spr = (13, 22)
+    op1_0_6 = (13, 21)
+    op1_refreg = (22, 24)
+    
+    op2 = (0, 12)
+    op2_ty = (11, 12)
+    op2_imm_mask = (10, 10)
+    op2_0_10 = (0, 10)
+    op2_10_12 = (10,12)
+    op2_7_12 = (7, 12)
+    op2_12 = (12, 12)
+    op2_reg = (0, 6)
+    op2_spr = (0, 9)
+    op2_0_6 = (0, 6)
+    op2_refreg = (7, 9)
+   
+
+    rest = (0, 63)
+;
+
+@include "spr.sinc"
+
+
+
+op0_std:"maskim" is op0 & op0_ty=0b11 & op0_imm_mask!=0 { export A; }
+
+
+op0_std:op0_0_10 is op0_0_10 & op0_ty=0b11 & op0_imm_mask=0 { 
+    local v:2 = op0_0_10;
+    export v;
+}
+op0_std:op0_spr is op0_10_12=0b100 & op0_spr { export *[ctrl_register]:2 op0_spr; }
+op0_std:op0_reg is op0_7_12=0b101111 & op0_reg { export op0_reg;}
+op0_std:"["op0"]" is op0_12=0 & op0 { export *[ram]:2 op0;}
+op0_std:"["op0_0_6","op0_refreg"]" is op0_10_12=0b101 & op0_0_6 & op0_refreg { 
+    local tmp:2 = op0_refreg + op0_0_6;
+    export *[ram]:2 tmp;
+ }
+
+
+
+op1_std:op1_0_10 is op1_0_10 & op1_ty=0b11 & op1_imm_mask=0 {
+    local v:2 = op1_0_10;
+    export v;
+}
+op1_std:op1_spr is op1_10_12=0b100 & op1_spr { export *[ctrl_register]:2 op1_spr; }
+op1_std:op1_reg is op1_7_12=0b101111 & op1_reg { export op1_reg; }
+op1_std:"["op1"]" is op1_12=0 & op1 { export *[ram]:2 op1;}
+op1_std:"["op1_0_6","op1_refreg"]" is op1_10_12=0b101 & op1_0_6 & op1_refreg { 
+    local tmp:2 = op1_refreg + op1_0_6;
+    export *[ram]:2 tmp;
+ }
+
+
+
+#op2
+op2_std:op2_0_10 is op2_0_10 & op2_ty=0b11 & op2_imm_mask=0 {
+    local v:2= op2_0_10;
+    export v;
+}
+op2_std:op2_spr is op2_10_12=0b100 & op2_spr { export *[ctrl_register]:2  op2_spr; }
+op2_std:op2_reg is op2_7_12=0b101111 & op2_reg { export op2_reg; }
+op2_std:"["op2"]" is op2_12=0 & op2 { export *[ram]:2 op2;}
+op2_std:"["op2_0_6","op2_refreg"]" is op2_10_12=0b101 & op2_0_6 & op2_refreg { 
+    local tmp:2 = op2_refreg + op2_0_6;
+    export *[ram]:2 tmp;
+ }
+
+
+:"srx" opcode_mid"," opcode_low"," op0_std"," op1_std"," op2_std is rest & top=0 & opcode_top=2  & opcode_mid & opcode_low & op0_std & op1_std & op2_std {
+    local tmp0:2 = op0_std;
+    local tmp1:2 = op1_std;
+    local mask1:4 = (1 << (opcode_low +1)) - 1;
+    local mask:2 = mask1:2;
+
+    local op0_u32:4 = zext(tmp0);
+    local op1_u32:4 = zext(tmp1);
+    local tmp:4 = (op1_u32 << 16) | op0_u32;
+    local res1:4 = tmp >> opcode_mid;
+    local result:2 = (res1:2) & mask;
+    op2_std = result;
+}
+
+:"orx" opcode_mid"," opcode_low"," op0_std"," op1_std"," op2_std is rest & top=0 & opcode_top=3  & opcode_mid & opcode_low & op0_std & op1_std & op2_std {
+
+    local tmp0:2 = op0_std;
+    local tmp1:2 = op1_std;
+    local mask:2 = (1 << (opcode_low +1)) - 1;
+    local mask_rot:2 = (mask << opcode_mid)|(mask >> (32-opcode_mid));
+    
+    local op0_rot:2 = (tmp0 << opcode_low)|(tmp0 >> (32-opcode_low));
+    local result:2 = (op0_rot & mask_rot) | (tmp1 & (~mask));
+    op2_std = result;
+}
+
+:"jzx" opcode_mid"," opcode_low"," op0_std"," op1_std"," tgt is rest & top=0 & opcode_top=4 & opcode_mid & opcode_low & op0_std & op1_std & op2 [tgt = op2*8; ]{
+    local tmp0:4 = zext(op0_std);
+    local tmp1:4 = zext(op1_std);
+
+    local tmp:4 = (tmp0 << 16) | (tmp1) >> opcode_mid;
+    local mask:4 = (1 << (opcode_low +1)) - 1;
+    local cmp:4 = tmp & mask;
+    if(cmp == 0) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+	
+}
+
+:"jnzx" opcode_mid"," opcode_low"," op0_std"," op1_std"," tgt is rest & top=0 & opcode_top=5 & opcode_mid & opcode_low & op0_std & op1_std & op2 [tgt = op2*8; ] {
+    local tmp0:4 = zext(op0_std);
+    local tmp1:4 = zext(op1_std);
+    local tmp:4 = ((tmp0 << 16) | (tmp1)) >> opcode_mid;
+    local mask:4 = (1 << (opcode_low +1)) - 1;
+    local cmp:4 = tmp & mask;
+    if(cmp != 0) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+define pcodeop external_cond;
+:"jnext" opcode_mid"," opcode_low"," op0_std"," op1_std"," tgt is rest & top=0 & opcode_top=6 & opcode_mid & opcode_low & op0_std & op1_std & opcode_lomid & op2 [ tgt = op2*8; ]   {
+    local tmp0:4 = opcode_lomid;
+    local tmp1:4 = external_cond(tmp0);
+    if(tmp1 != 0) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+
+:"jext" opcode_lomid"," tgt is rest & top=0 & opcode_top=7 & opcode_lomid & op2 & op2_std [tgt = op2*8; ] {  
+    local tmp0:4 = opcode_lomid;
+    local tmp1:4 = external_cond(tmp0);
+    if(tmp1 == 0) goto inst_next;
+    local dest:4 = tgt;
+    goto [dest];
+}
+
+:"mul" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x101 & op0_std & op1_std & op2_std {
+    local tmp0:4 = zext(op0_std);
+    local tmp1:4 = zext(op1_std);
+    local res:4 = (tmp0 * tmp1) >> 16;
+    
+    op2_std = res:2;
+    #TODO: IHR
+}
+
+
+:"add" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1C0 | opcode=0x180) & op0_std & op1_std & op2_std {
+    op2_std = op0_std + op1_std;
+}
+
+:"adds" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1C2 | opcode=0x182) & op0_std & op1_std & op2_std {
+    local tmp0:4 = zext(op0_std);
+    local tmp1:4 = zext(op1_std);
+
+    local tmp:4 = tmp0 + tmp1;
+    local carry:1 = tmp > 0xFFFF;
+    flags = zext(carry);
+    op2_std = tmp:2;
+}
+
+:"addc" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1C1 | opcode=0x181) & op0_std & op1_std & op2_std {
+    local tmp0:4 = zext(op0_std);
+    local tmp1:4 = zext(op1_std);
+
+    local tmp:4 = tmp0 + tmp1;
+    if(flags == 0) goto <next>;
+    tmp = tmp + 1;
+    <next>
+
+    op2_std = tmp:2;
+}
+
+:"addcs" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1C3 | opcode=0x183) & op0_std & op1_std & op2_std {
+    local tmp0:4 = zext(op0_std);
+    local tmp1:4 = zext(op1_std);
+
+    local tmp:4 = tmp0 + tmp1;
+    if(flags == 0) goto <next>;
+    tmp = tmp + 1;
+    <next>
+
+    local carry:1 = tmp > 0xFFFF;
+    flags = zext(carry);
+    op2_std = tmp:2;
+}
+
+:"sub" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1D0 | opcode=0x190) & op0_std & op1_std & op2_std {
+    op2_std = op0_std - op1_std;
+}
+
+
+:"subs" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1D2 | opcode=0x192) & op0_std & op1_std & op2_std {
+    local tmp0:4 = zext(op0_std);
+    local tmp1:4 = zext(op1_std);
+
+    local tmp:4 = tmp0 - tmp1;
+    local carry:1 = tmp0 s< tmp1;
+    flags = zext(carry);
+    op2_std = tmp:2;
+}
+
+:"subc" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1D1 | opcode=0x191) & op0_std & op1_std & op2_std {
+    local tmp0:4 = zext(op0_std);
+    local tmp1:4 = zext(op1_std);
+
+    local tmp:4 = tmp0 - tmp1;
+    if(flags == 0) goto <next>;
+    tmp = tmp - 1;
+    <next>
+
+    op2_std = tmp:2;
+}
+
+:"subcs" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1D3 | opcode=0x193) & op0_std & op1_std & op2_std  {
+    local tmp0:4 = zext(op0_std);
+    local tmp1:4 = zext(op1_std);
+
+    local tmp:4 = tmp0 - tmp1;
+    if(flags == 0) goto <next>;
+    tmp = tmp - 1;
+    <next>
+
+    local carry:1 = tmp0 s< tmp1;
+    flags = zext(carry);
+    op2_std = tmp:2;
+}
+
+:"sra" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x130 & op0_std & op1_std & op2_std {
+    op2_std = op0_std s>> op1_std;
+}
+
+:"or" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x160 & op0_std & op1_std & op2_std {
+    op2_std = op0_std | op1_std;
+}
+
+:"and" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x140 & op0_std & op1_std & op2_std {
+    op2_std = op0_std & op1_std;
+}
+
+:"xor" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x170 & op0_std & op1_std & op2_std {
+    op2_std = op0_std ^ op1_std;
+}
+
+:"sr" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x120 & op0_std & op1_std & op2_std {
+    op2_std = op0_std >> op1_std;
+}
+
+:"sl" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x110 & op0_std & op1_std & op2_std {
+    op2_std = op0_std << op1_std;
+}
+
+:"rl" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x1A0 & op0_std & op1_std & op2_std {
+    op2_std = (op0_std << op1_std) | (op0_std >> (32 - op1_std));
+}
+
+:"rr" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x1B0 & op0_std & op1_std & op2_std {
+    op2_std = (op0_std >> op1_std) | (op0_std << (32 - op1_std));
+}
+
+:"nand" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x150 & op0_std & op1_std & op2_std {
+    op2_std = ~(op0_std & op1_std);
+}
+
+:"jand" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x040 & op0_std & op1_std & op2 [ tgt=op2*8;] {
+    local tmp:2 = op0_std & op1_std;
+    if(tmp != 0) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jnand" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x041 & op0_std & op1_std & op2 [tgt=op2*8;] {
+    local tmp:2 = op0_std & op1_std;
+    if(tmp == 0) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"js" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x050 & op0_std & op1_std & op2 [tgt=op2*8;] {
+    local tmp:2 = op0_std & op1_std;
+    if(tmp != op0_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jns" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x051 & op0_std & op1_std & op2 [tgt=op2*8;] {
+    local tmp:2 = op0_std & op1_std;
+    if(tmp == op0_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jboh" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x070 & op0_std & op1_std & op2 [tgt=op2*8;] {
+    if(op0_std != op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jnboh" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x071 & op0_std & op1_std & op2 [tgt=op2*8;] {
+    if(op0_std == op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"je" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D0 | opcode=0x090) & op0_std & op1_std & op2 [ tgt=op2*8;] {
+    if(op0_std != op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jne" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D1 | opcode=0x091) & op0_std & op1_std & op2 [ tgt=op2*8;] {
+    if(op0_std == op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+
+:"jls" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D2 | opcode=0x092) & op0_std & op1_std & op2 [tgt=op2*8;] {
+    if(op0_std s>= op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jges" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D3 | opcode=0x093) & op0_std & op1_std & op2 [tgt=op2*8;] {
+    if(op0_std s< op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+
+
+:"jgs" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D4 | opcode=0x094) & op0_std & op1_std & op2 [ tgt=op2*8;] {
+    if(op0_std s<= op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jles" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D5 | opcode=0x095) & op0_std & op1_std & op2 [ tgt=op2*8;] {
+    if(op0_std s> op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+
+:"jdn" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D6 | opcode=0x096) & op0_std & op1_std & op2 [tgt=op2*8;] {
+    local tmp:2 = op0_std - op1_std;
+    if(tmp s>= 0) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jdpz" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D7 | opcode=0x097) & op0_std & op1_std & op2 [tgt=op2*8;] {
+    local tmp:2 = op0_std - op1_std;
+    if(tmp s< 0) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jdp" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D8 | opcode=0x098) & op0_std & op1_std & op2 [tgt=op2*8;] {
+    local tmp:2 = op0_std - op1_std;
+    if(tmp s<= 0) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jdnz" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D9 | opcode=0x099) & op0_std & op1_std & op2 [tgt=op2*8;] {
+    local tmp:2 = op0_std - op1_std;
+    if(tmp s> 0) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jl" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0DA | opcode=0x09A) & op0_std & op1_std & op2 [ tgt=op2*8;]{
+    if(op0_std == op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jge" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0DB | opcode=0x09B) & op0_std & op1_std & op2 [ tgt=op2*8;] { 
+    if(op0_std < op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+:"jg" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0DC | opcode=0x09C) & op0_std & op1_std & op2 [ tgt=op2*8;] { 
+    if(op0_std <= op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+
+:"jle" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0DD | opcode=0x09D) & op0_std & op1_std & op2 [ tgt=op2*8;] { 
+    if(op0_std > op1_std) goto inst_next;
+    local dest:2 = tgt;
+    goto [dest];
+}
+
+
+
+
+:"calls" tgt is rest & top=0 & opcode=0x004 & op2 [tgt = op2*8;] {
+    local stack_slot:2 = call_stack + ihr_sub_stack_status*2;
+    *[ram]:2 stack_slot = inst_next;
+    ihr_sub_stack_status = ihr_sub_stack_status + 1;
+    
+    local dest:2 = tgt;
+    call [dest];
+}
+
+:"rets" is rest & top=0 & opcode=0x005 {
+    ihr_sub_stack_status = ihr_sub_stack_status - 1;
+    local stack_slot:2 = call_stack + ihr_sub_stack_status*2;
+    local dest:2 = *[ram]:2 stack_slot;
+    return [dest];
+}
+
+define pcodeop sbox_forward;
+define pcodeop sbox_backward;
+
+:"tkip" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x1E0 & op0_std & op1_std & op2_std {
+    local op:2 = op0_std; 
+    local tmp:2 = op & 1;
+    local ret:2 = 0;
+    if(tmp == 0) goto <noshift>;
+        op = op >> 8;
+    <noshift>
+    tmp = op & 2;
+    if(tmp == 0) goto <nofw>;
+        ret = sbox_forward(op);
+        goto <end>;
+    <nofw>
+        ret = sbox_backward(op);
+        goto <end>;
+    <end>
+        op2_std = ret;
+}
+    
+
+# nop
+define pcodeop nap;
+:"nap" is rest & top=0 & opcode=0x001 { nap(); }
+:"nap2" is rest & top=0 & opcode=0x002 { nap(); }
