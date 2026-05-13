@@ -126,10 +126,10 @@ op2_std:"["op2_0_6","op2_refreg"]" is op2_10_12=0b101 & op2_0_6 & op2_refreg {
     local tmp0:2 = op0_std;
     local tmp1:2 = op1_std;
     local mask:2 = (1 << (opcode_low +1)) - 1;
-    local mask_rot:2 = (mask << opcode_mid)|(mask >> (32-opcode_mid));
+    local mask_rot:2 = (mask << opcode_mid)|(mask >> (16-opcode_mid));
     
-    local op0_rot:2 = (tmp0 << opcode_low)|(tmp0 >> (32-opcode_low));
-    local result:2 = (op0_rot & mask_rot) | (tmp1 & (~mask));
+    local op0_rot:2 = (tmp0 << opcode_mid)|(tmp0 >> (16-opcode_mid));
+    local result:2 = (op0_rot & mask_rot) | (tmp1 & (~mask_rot));
     op2_std = result;
 }
 
@@ -137,10 +137,10 @@ op2_std:"["op2_0_6","op2_refreg"]" is op2_10_12=0b101 & op2_0_6 & op2_refreg {
     local tmp0:4 = zext(op0_std);
     local tmp1:4 = zext(op1_std);
 
-    local tmp:4 = (tmp0 << 16) | (tmp1) >> opcode_mid;
+    local tmp:4 = ((tmp0 << 16) | (tmp1)) >> opcode_mid;
     local mask:4 = (1 << (opcode_low +1)) - 1;
     local cmp:4 = tmp & mask;
-    if(cmp == 0) goto inst_next;
+    if(cmp != 0) goto inst_next;
     local dest:2 = tgt;
     goto [dest];
 	
@@ -152,7 +152,7 @@ op2_std:"["op2_0_6","op2_refreg"]" is op2_10_12=0b101 & op2_0_6 & op2_refreg {
     local tmp:4 = ((tmp0 << 16) | (tmp1)) >> opcode_mid;
     local mask:4 = (1 << (opcode_low +1)) - 1;
     local cmp:4 = tmp & mask;
-    if(cmp != 0) goto inst_next;
+    if(cmp == 0) goto inst_next;
     local dest:2 = tgt;
     goto [dest];
 }
@@ -171,7 +171,7 @@ define pcodeop external_cond;
     local tmp0:4 = opcode_lomid;
     local tmp1:4 = external_cond(tmp0);
     if(tmp1 == 0) goto inst_next;
-    local dest:4 = tgt;
+    local dest:2 = tgt;
     goto [dest];
 }
 
@@ -291,11 +291,11 @@ define pcodeop external_cond;
 }
 
 :"rl" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x1A0 & op0_std & op1_std & op2_std {
-    op2_std = (op0_std << op1_std) | (op0_std >> (32 - op1_std));
+    op2_std = (op0_std << op1_std) | (op0_std >> (16 - op1_std));
 }
 
 :"rr" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x1B0 & op0_std & op1_std & op2_std {
-    op2_std = (op0_std >> op1_std) | (op0_std << (32 - op1_std));
+    op2_std = (op0_std >> op1_std) | (op0_std << (16 - op1_std));
 }
 
 :"nand" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x150 & op0_std & op1_std & op2_std {
@@ -304,14 +304,14 @@ define pcodeop external_cond;
 
 :"jand" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x040 & op0_std & op1_std & op2 [ tgt=op2*8;] {
     local tmp:2 = op0_std & op1_std;
-    if(tmp != 0) goto inst_next;
+    if(tmp == 0) goto inst_next;
     local dest:2 = tgt;
     goto [dest];
 }
 
 :"jnand" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x041 & op0_std & op1_std & op2 [tgt=op2*8;] {
     local tmp:2 = op0_std & op1_std;
-    if(tmp == 0) goto inst_next;
+    if(tmp != 0) goto inst_next;
     local dest:2 = tgt;
     goto [dest];
 }
@@ -411,7 +411,7 @@ define pcodeop external_cond;
 }
 
 :"jl" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0DA | opcode=0x09A) & op0_std & op1_std & op2 [ tgt=op2*8;]{
-    if(op0_std == op1_std) goto inst_next;
+    if(op0_std >= op1_std) goto inst_next;
     local dest:2 = tgt;
     goto [dest];
 }
@@ -459,12 +459,12 @@ define pcodeop sbox_backward;
 
 :"tkip" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x1E0 & op0_std & op1_std & op2_std {
     local op:2 = op0_std; 
-    local tmp:2 = op & 1;
+    local tmp:2 = op1_std & 1;
     local ret:2 = 0;
     if(tmp == 0) goto <noshift>;
         op = op >> 8;
     <noshift>
-    tmp = op & 2;
+    tmp = op1_std & 2;
     if(tmp == 0) goto <nofw>;
         ret = sbox_forward(op);
         goto <end>;
